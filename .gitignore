@@ -1,0 +1,5 @@
+tools/
+native/
+artifacts/
+**/bin/
+**/obj/
