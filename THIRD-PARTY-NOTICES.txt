@@ -1,0 +1,36 @@
+Win4DaveMediaPlayer third-party components
+========================================
+
+mpv / libmpv
+  Build: e471496c56, shinchiro Windows release 20261021
+  Project: https://mpv.io/
+  Source: https://github.com/mpv-player/mpv/tree/e471496c56
+  Binary supplier and build recipes:
+    https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261021
+    https://github.com/shinchiro/mpv-winbuild-cmake
+  Includes FFmpeg and other libraries, compiled into libmpv-2.dll.
+  See MPV-COPYRIGHT.txt, MPV-GPL.txt and MPV-LGPL.txt.
+  This Windows supplier's FFmpeg build enables GPL and version 3 components.
+  The combined distributed playback library must therefore be treated as GPLv3.
+
+FFmpeg
+  Build: 9a861e968 (the supplier's matching release)
+  Project: https://ffmpeg.org/
+  Source: https://github.com/FFmpeg/FFmpeg/tree/9a861e968
+  Included within libmpv; the separate FFmpeg fixture generator is not shipped.
+  GPLv3 text is included as LICENSE.txt.
+
+.NET / Windows Forms
+  Runtime: Microsoft.NETCore.App and Microsoft.WindowsDesktop.App 8.0.33
+  Sources:
+    https://github.com/dotnet/runtime/tree/v8.0.33
+    https://github.com/dotnet/winforms/tree/v8.0.33
+    https://github.com/dotnet/wpf/tree/v8.0.33
+  License: MIT, plus third-party components with their own licenses.
+  See DOTNET-LICENSE.txt and DOTNET-THIRD-PARTY-NOTICES.txt.
+
+Redistribution
+  These notices and upstream links identify dependencies; they are not a
+  substitute for the complete corresponding source required by GPL licenses.
+  The application source archive does not include the playback library's
+  dependency source trees. Obtain and supply those before redistribution.
