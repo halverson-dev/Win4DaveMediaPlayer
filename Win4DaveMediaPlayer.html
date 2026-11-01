@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Win4DaveMediaPlayer</title>
+  <style>
+    :root { color-scheme: dark; font-family: Segoe UI, Arial, sans-serif; }
+    body { margin: 0; background: #111; color: #eee; }
+    header { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px;
+      background: #1d1d1d; border-bottom: 1px solid #333; }
+    h1 { font-size: 18px; margin: 0 12px 0 0; white-space: nowrap; }
+    button, input { font: inherit; }
+    button { min-height: 32px; border: 1px solid #555; border-radius: 5px;
+      background: #303030; color: #fff; padding: 5px 10px; cursor: pointer; }
+    button:hover { background: #3d3d3d; }
+    button:disabled { opacity: .45; cursor: default; }
+    input[type="number"], input[type="text"] { width: 90px; border: 1px solid #555;
+      border-radius: 4px; background: #222; color: #fff; padding: 5px; }
+    input[type="range"] { accent-color: #5fa8ff; }
+    main { display: grid; grid-template-columns: 1fr 300px; height: calc(100vh - 52px); }
+    #stage { min-width: 0; display: grid; place-items: center; background: #050505; overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+    aside { border-left: 1px solid #333; background: #181818; padding: 12px; overflow-y: auto; }
+    .panel { border-bottom: 1px solid #333; padding: 0 0 12px; margin-bottom: 12px; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+    .row label { min-width: 82px; }
+    #timeline { width: 100%; }
+    #status { margin-left: auto; color: #aaa; font-size: 13px; }
+    #dropHint { position: absolute; display: none; border: 3px dashed #5fa8ff;
+      inset: 70px 318px 18px 18px; place-items: center; color: #9bc7ff;
+      background: rgba(20,40,70,.65); font-size: 24px; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Win4DaveMediaPlayer</h1>
+    <button id="openBtn">Open MP4</button>
+    <input id="fileInput" type="file" accept=".mp4,video/mp4" hidden />
+    <button id="prevBtn" disabled title="Previous frame (Left arrow)">&#9664; Frame</button>
+    <button id="playBtn" disabled title="Play/Pause (Space)">Play</button>
+    <button id="nextBtn" disabled title="Next frame (Right arrow)">Frame &#9654;</button>
+    <span id="status">No MP4 loaded</span>
+  </header>
+
+  <main>
+    <section id="stage">
+      <video id="video" preload="metadata" tabindex="0"></video>
+      <div id="dropHint">Drop MP4 here</div>
+    </section>
+
+    <aside>
+      <div class="panel">
+        <div class="row"><input id="timeline" type="range" min="0" max="1000" value="0" disabled /></div>
+        <div class="row"><span id="timeDisplay">00:00.000 / 00:00.000</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <label>Speed</label>
+          <button id="slowBtn" disabled>10% slow</button>
+          <button id="normalBtn" disabled>Normal</button>
+        </div>
+        <div class="row">
+          <label for="fps">Frame rate</label>
+          <input id="fps" type="number" min="1" max="240" step="1" value="30" />
+          <span>fps</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <label>Interval</label>
+          <input id="intervalEnabled" type="checkbox" />
+          <span>Constrain</span>
+        </div>
+        <div class="row">
+          <label for="startTime">Start</label>
+          <input id="startTime" type="text" value="00:00.000" />
+          <button id="setStartBtn" disabled>Set</button>
+        </div>
+        <div class="row">
+          <label for="endTime">End</label>
+          <input id="endTime" type="text" value="00:00.000" />
+          <button id="setEndBtn" disabled>Set</button>
+        </div>
+        <div class="row">
+          <button id="clearIntervalBtn" disabled>Clear interval</button>
+          <button id="loopBtn" disabled aria-pressed="false">Loop: Off</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const video = document.querySelector('#video');
+    const fileInput = document.querySelector('#fileInput');
+    const openBtn = document.querySelector('#openBtn');
+    const playBtn = document.querySelector('#playBtn');
+    const prevBtn = document.querySelector('#prevBtn');
+    const nextBtn = document.querySelector('#nextBtn');
+    const timeline = document.querySelector('#timeline');
+    const timeDisplay = document.querySelector('#timeDisplay');
+    const status = document.querySelector('#status');
+    const fpsInput = document.querySelector('#fps');
+    const slowBtn = document.querySelector('#slowBtn');
+    const normalBtn = document.querySelector('#normalBtn');
+    const intervalEnabled = document.querySelector('#intervalEnabled');
+    const startTimeInput = document.querySelector('#startTime');
+    const endTimeInput = document.querySelector('#endTime');
+    const setStartBtn = document.querySelector('#setStartBtn');
+    const setEndBtn = document.querySelector('#setEndBtn');
+    const clearIntervalBtn = document.querySelector('#clearIntervalBtn');
+    const loopBtn = document.querySelector('#loopBtn');
+    const dropHint = document.querySelector('#dropHint');
+
+    let objectUrl = null;
+    let intervalStart = 0;
+    let intervalEnd = 0;
+    let looping = false;
+    let seekingTimeline = false;
+
+    function pad(n, width = 2) { return String(n).padStart(width, '0'); }
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+      const totalMs = Math.round(seconds * 1000);
+      const ms = totalMs % 1000;
+      const totalSeconds = Math.floor(totalMs / 1000);
+      const s = totalSeconds % 60;
+      const m = Math.floor(totalSeconds / 60);
+      return `${pad(m)}:${pad(s)}.${pad(ms, 3)}`;
+    }
+
+    function parseTime(text) {
+      const value = text.trim();
+      const match = /^(\d+):([0-5]\d)(?:\.(\d{1,3}))?$/.exec(value);
+      if (!match) return NaN;
+      const ms = (match[3] || '').padEnd(3, '0');
+      return Number(match[1]) * 60 + Number(match[2]) + Number(ms) / 1000;
+    }
+
+    function setLoadedUi(loaded) {
+      for (const el of [playBtn, prevBtn, nextBtn, timeline, slowBtn, normalBtn,
+                         setStartBtn, setEndBtn, clearIntervalBtn, loopBtn]) el.disabled = !loaded;
+    }
+
+    function loadFile(file) {
+      if (!file || (!file.name.toLowerCase().endsWith('.mp4') && file.type !== 'video/mp4')) {
+        status.textContent = 'Only MP4 files are supported';
+        return;
+      }
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file);
+      video.src = objectUrl;
+      video.load();
+      intervalEnabled.checked = false;
+      intervalStart = 0;
+      intervalEnd = 0;
+      looping = false;
+      loopBtn.textContent = 'Loop: Off';
+      loopBtn.setAttribute('aria-pressed', 'false');
+      status.textContent = file.name;
+    }
+
+    openBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
+
+    video.addEventListener('loadedmetadata', () => {
+      intervalEnd = video.duration;
+      startTimeInput.value = formatTime(0);
+      endTimeInput.value = formatTime(video.duration);
+      timeline.disabled = false;
+      setLoadedUi(true);
+      status.textContent = `${status.textContent} - ${formatTime(video.duration)}`;
+    });
+
+    video.addEventListener('error', () => {
+      status.textContent = 'Unable to play this MP4';
+      setLoadedUi(false);
+    });
+
+    video.addEventListener('play', () => playBtn.textContent = 'Pause');
+    video.addEventListener('pause', () => playBtn.textContent = 'Play');
+
+    function togglePlayback() {
+      if (video.paused) video.play();
+      else video.pause();
+    }
+    playBtn.addEventListener('click', togglePlayback);
+
+    function stepFrame(direction) {
+      if (!video.src) return;
+      video.pause();
+      const fps = Math.min(240, Math.max(1, Number(fpsInput.value) || 30));
+      const next = video.currentTime + direction / fps;
+      video.currentTime = Math.min(video.duration || Infinity,
+        Math.max(0, constrainTime(next)));
+    }
+
+    prevBtn.addEventListener('click', () => stepFrame(-1));
+    nextBtn.addEventListener('click', () => stepFrame(1));
+
+    slowBtn.addEventListener('click', () => video.playbackRate = 0.1);
+    normalBtn.addEventListener('click', () => video.playbackRate = 1);
+
+    timeline.addEventListener('pointerdown', () => seekingTimeline = true);
+    timeline.addEventListener('pointerup', () => seekingTimeline = false);
+    timeline.addEventListener('input', () => {
+      if (!video.src) return;
+      video.currentTime = constrainTime(video.duration * Number(timeline.value) / 1000);
+    });
+
+    video.addEventListener('timeupdate', () => {
+      if (!seekingTimeline) timeline.value = Math.round(1000 * video.currentTime / (video.duration || 1));
+      timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+
+      if (!intervalEnabled.checked) return;
+      if (video.currentTime < intervalStart) video.currentTime = intervalStart;
+      if (video.currentTime >= intervalEnd) {
+        if (looping) video.currentTime = intervalStart;
+        else {
+          video.pause();
+          video.currentTime = intervalEnd;
+        }
+      }
+    });
+
+    function constrainTime(time) {
+      if (!intervalEnabled.checked) return time;
+      const start = intervalStart;
+      const end = intervalEnd;
+      if (time < start) return start;
+      if (time > end) return end;
+      return time;
+    }
+
+    function readIntervalValue(input) {
+      const parsed = parseTime(input.value);
+      if (!Number.isFinite(parsed)) {
+        status.textContent = 'Use time format MM:SS.mmm';
+        return null;
+      }
+      return Math.min(video.duration, Math.max(0, parsed));
+    }
+
+    setStartBtn.addEventListener('click', () => {
+      const value = readIntervalValue(startTimeInput);
+      if (value === null) return;
+      intervalStart = value;
+      if (intervalStart > intervalEnd) intervalEnd = intervalStart;
+      endTimeInput.value = formatTime(intervalEnd);
+      intervalEnabled.checked = true;
+      video.currentTime = intervalStart;
+    });
+
+    setEndBtn.addEventListener('click', () => {
+      const value = readIntervalValue(endTimeInput);
+      if (value === null) return;
+      intervalEnd = value;
+      if (intervalEnd < intervalStart) intervalStart = intervalEnd;
+      startTimeInput.value = formatTime(intervalStart);
+      intervalEnabled.checked = true;
+      video.currentTime = intervalStart;
+    });
+
+    clearIntervalBtn.addEventListener('click', () => {
+      intervalEnabled.checked = false;
+      intervalStart = 0;
+      intervalEnd = video.duration;
+      startTimeInput.value = formatTime(0);
+      endTimeInput.value = formatTime(video.duration);
+    });
+
+    loopBtn.addEventListener('click', () => {
+      looping = !looping;
+      loopBtn.textContent = `Loop: ${looping ? 'On' : 'Off'}`;
+      loopBtn.setAttribute('aria-pressed', String(looping));
+    });
+
+    intervalEnabled.addEventListener('change', () => {
+      if (intervalEnabled.checked) video.currentTime = constrainTime(video.currentTime);
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.target.matches('input')) return;
+      if (event.code === 'Space') { event.preventDefault(); togglePlayback(); }
+      if (event.code === 'ArrowLeft') { event.preventDefault(); stepFrame(-1); }
+      if (event.code === 'ArrowRight') { event.preventDefault(); stepFrame(1); }
+    });
+
+    window.addEventListener('dragenter', event => { event.preventDefault(); dropHint.style.display = 'grid'; });
+    window.addEventListener('dragover', event => event.preventDefault());
+    window.addEventListener('dragleave', event => {
+      if (event.relatedTarget === null) dropHint.style.display = 'none';
+    });
+    window.addEventListener('drop', event => {
+      event.preventDefault();
+      dropHint.style.display = 'none';
+      loadFile(event.dataTransfer.files[0]);
+    });
+  </script>
+</body>
+</html>

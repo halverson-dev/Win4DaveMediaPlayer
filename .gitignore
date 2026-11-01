@@ -1,5 +1,1 @@
-tools/
-native/
-artifacts/
-**/bin/
-**/obj/
+*.exe
